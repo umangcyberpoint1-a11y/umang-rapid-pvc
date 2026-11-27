@@ -1,0 +1,382 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UMANG Rapid PVC</title>
+
+<style>
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #f1f5f9;
+  color: #172033;
+}
+
+header {
+  background: #087f5b;
+  color: white;
+  padding: 22px;
+  text-align: center;
+}
+
+header h1 {
+  margin: 0;
+  font-size: 27px;
+}
+
+header p {
+  margin-bottom: 0;
+}
+
+.container {
+  max-width: 950px;
+  margin: 25px auto;
+  padding: 15px;
+}
+
+.panel {
+  background: white;
+  border-radius: 14px;
+  padding: 20px;
+  margin-bottom: 20px;
+  box-shadow: 0 4px 15px #0000000c;
+}
+
+button, input {
+  margin: 8px 0;
+}
+
+button {
+  background: #087f5b;
+  color: white;
+  border: none;
+  padding: 12px 18px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 15px;
+}
+
+button:hover {
+  background: #056344;
+}
+
+canvas {
+  max-width: 100%;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  display: block;
+  margin-top: 15px;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.preview {
+  width: 320px;
+  max-width: 100%;
+  border: 1px solid #ddd;
+  background: white;
+  padding: 8px;
+  border-radius: 10px;
+}
+
+.preview canvas {
+  width: 100%;
+  border: none;
+  cursor: default;
+}
+
+.note {
+  color: #64748b;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+footer {
+  text-align: center;
+  padding: 20px;
+  color: #64748b;
+}
+</style>
+</head>
+
+<body>
+
+<header>
+  <h1>UMANG Rapid PVC</h1>
+  <p>Simple Card Crop & Print Tool</p>
+</header>
+
+<div class="container">
+
+  <div class="panel">
+    <h2>1. Upload Image</h2>
+    <p>Select a document image from your computer.</p>
+
+    <input type="file" id="fileInput" accept="image/*">
+
+    <p class="note">
+      Select an image, then drag over it to choose the card area.
+      The image is processed in your browser.
+    </p>
+
+    <canvas id="sourceCanvas"></canvas>
+  </div>
+
+  <div class="panel">
+    <h2>2. Card Preview</h2>
+
+    <div class="preview">
+      <canvas id="outputCanvas" width="856" height="540"></canvas>
+    </div>
+
+    <button id="downloadBtn">Download Card JPG</button>
+    <button id="printBtn">Print Card</button>
+  </div>
+
+  <div class="panel">
+    <h2>How to use</h2>
+    <ol>
+      <li>Choose an image from your computer.</li>
+      <li>Drag on the image to select the card area.</li>
+      <li>Check the card preview.</li>
+      <li>Download or print the result.</li>
+    </ol>
+
+    <p class="note">
+      Use only documents you are authorized to process.
+      This tool crops and prints images; it does not verify
+      official documents or change their information.
+    </p>
+  </div>
+
+</div>
+
+<footer>
+  UMANG Rapid PVC | Card Crop Utility
+</footer>
+
+<script>
+const fileInput = document.getElementById("fileInput");
+const sourceCanvas = document.getElementById("sourceCanvas");
+const outputCanvas = document.getElementById("outputCanvas");
+
+const sourceCtx = sourceCanvas.getContext("2d");
+const outputCtx = outputCanvas.getContext("2d");
+
+let image = new Image();
+let isDragging = false;
+let startX = 0;
+let startY = 0;
+let endX = 0;
+let endY = 0;
+let hasSelection = false;
+
+fileInput.addEventListener("change", function(event) {
+  const file = event.target.files[0];
+
+  if (!file) return;
+
+  if (!file.type.startsWith("image/")) {
+    alert("Please select an image file.");
+    return;
+  }
+
+  const reader = new FileReader();
+
+  reader.onload = function(e) {
+    image.onload = function() {
+      const maxWidth = 900;
+      const scale = Math.min(1, maxWidth / image.width);
+
+      sourceCanvas.width = Math.round(image.width * scale);
+      sourceCanvas.height = Math.round(image.height * scale);
+
+      sourceCtx.clearRect(
+        0, 0, sourceCanvas.width, sourceCanvas.height
+      );
+
+      sourceCtx.drawImage(
+        image,
+        0, 0,
+        sourceCanvas.width,
+        sourceCanvas.height
+      );
+
+      hasSelection = false;
+      drawSource();
+      outputCtx.clearRect(
+        0, 0, outputCanvas.width, outputCanvas.height
+      );
+    };
+
+    image.src = e.target.result;
+  };
+
+  reader.readAsDataURL(file);
+});
+
+function getCanvasPoint(event) {
+  const rect = sourceCanvas.getBoundingClientRect();
+
+  return {
+    x: (event.clientX - rect.left) *
+       sourceCanvas.width / rect.width,
+    y: (event.clientY - rect.top) *
+       sourceCanvas.height / rect.height
+  };
+}
+
+sourceCanvas.addEventListener("pointerdown", function(event) {
+  if (!image.src) return;
+
+  isDragging = true;
+  sourceCanvas.setPointerCapture(event.pointerId);
+
+  const point = getCanvasPoint(event);
+
+  startX = point.x;
+  startY = point.y;
+  endX = point.x;
+  endY = point.y;
+});
+
+sourceCanvas.addEventListener("pointermove", function(event) {
+  if (!isDragging) return;
+
+  const point = getCanvasPoint(event);
+
+  endX = point.x;
+  endY = point.y;
+
+  drawSource();
+});
+
+sourceCanvas.addEventListener("pointerup", function() {
+  if (!isDragging) return;
+
+  isDragging = false;
+  hasSelection = true;
+
+  drawSource();
+  createPreview();
+});
+
+function drawSource() {
+  sourceCtx.clearRect(
+    0, 0, sourceCanvas.width, sourceCanvas.height
+  );
+
+  sourceCtx.drawImage(
+    image,
+    0, 0,
+    sourceCanvas.width,
+    sourceCanvas.height
+  );
+
+  if (hasSelection || isDragging) {
+    const x = Math.min(startX, endX);
+    const y = Math.min(startY, endY);
+    const w = Math.abs(endX - startX);
+    const h = Math.abs(endY - startY);
+
+    sourceCtx.strokeStyle = "#00a86b";
+    sourceCtx.lineWidth = 3;
+    sourceCtx.strokeRect(x, y, w, h);
+  }
+}
+
+function createPreview() {
+  const x = Math.min(startX, endX);
+  const y = Math.min(startY, endY);
+  const w = Math.abs(endX - startX);
+  const h = Math.abs(endY - startY);
+
+  if (w < 10 || h < 10) {
+    alert("Please select a larger area.");
+    return;
+  }
+
+  outputCtx.fillStyle = "white";
+  outputCtx.fillRect(
+    0, 0, outputCanvas.width, outputCanvas.height
+  );
+
+  outputCtx.drawImage(
+    sourceCanvas,
+    x, y, w, h,
+    0, 0, outputCanvas.width, outputCanvas.height
+  );
+}
+
+document.getElementById("downloadBtn").addEventListener("click", function() {
+  if (!hasSelection) {
+    alert("Please upload an image and select the card area.");
+    return;
+  }
+
+  const link = document.createElement("a");
+  link.download = "umang-rapid-pvc.jpg";
+  link.href = outputCanvas.toDataURL("image/jpeg", 0.95);
+  link.click();
+});
+
+document.getElementById("printBtn").addEventListener("click", function() {
+  if (!hasSelection) {
+    alert("Please select the card area first.");
+    return;
+  }
+
+  const data = outputCanvas.toDataURL("image/png");
+
+  const printWindow = window.open("", "_blank");
+
+  if (!printWindow) {
+    alert("Please allow pop-ups to print.");
+    return;
+  }
+
+  printWindow.document.write(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Print Card</title>
+      <style>
+        @page {
+          size: A4;
+          margin: 15mm;
+        }
+        body {
+          margin: 0;
+          text-align: center;
+        }
+        img {
+          width: 85.6mm;
+          height: 54mm;
+          object-fit: fill;
+          margin: 10mm;
+        }
+      </style>
+    </head>
+    <body>
+      <img src="${data}">
+      <script>
+        window.onload = function() {
+          window.print();
+        };
+      <\/script>
+    </body>
+    </html>
+  `);
+
+  printWindow.document.close();
+});
+</script>
+
+</body>
+</html>
